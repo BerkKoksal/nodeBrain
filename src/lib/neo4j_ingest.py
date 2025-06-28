@@ -2,6 +2,7 @@ from neo4j import GraphDatabase
 import os
 import json
 from topicCreate import generate_learning_roadmap # Import your AI function
+from Source_gen import generate_sources_for_topic # NEW: Import the source generator
 
 # --- Neo4j Connection Details ---
 # Store these securely, e.g., in environment variables or a config file
@@ -74,11 +75,11 @@ def create_source_nodes_and_relationships(tx, topic_id, sources_data):
         ON CREATE SET
             s.type = $type,
             s.relevance_score = $relevance_score,
-            s.summary = $summary
+            s.title = $title
         ON MATCH SET
             s.type = $type,
             s.relevance_score = $relevance_score,
-            s.summary = $summary
+            s.title = $title
         MERGE (t)-[:HAS_SOURCE]->(s)
         """
         tx.run(query,
@@ -86,8 +87,7 @@ def create_source_nodes_and_relationships(tx, topic_id, sources_data):
                url=source['url'],
                type=source['type'],
                relevance_score=source['relevance_score'],
-               summary=source['summary'])
-
+               title=source['title'])
 # --- User-Specific Data (for later, but design it now) ---
 def update_user_topic_status(tx, user_id, topic_id, status, mastery_score):
     # User node will need to be created/merged first
@@ -120,7 +120,6 @@ def ingest_roadmap_into_neo4j(learning_goal: str, user_id: str):
         return
 
     # 1. Generate topics using AI
-    # This will be your `roadmap` from the previous step.
     ai_generated_topics = generate_learning_roadmap(learning_goal) # Call your AI function
 
     if not ai_generated_topics:
@@ -128,16 +127,11 @@ def ingest_roadmap_into_neo4j(learning_goal: str, user_id: str):
         return
 
     # --- IMPORTANT: Data Cleaning/Validation Step ---
-    # Before ingesting, process ai_generated_topics to handle duplicates and ensure data integrity.
-    # This is where your deduplication logic (as discussed in previous responses) goes.
-    # For simplicity, let's assume `ai_generated_topics` is already cleaned.
-    # Example: a basic deduplication (you'll need more robust logic)
     unique_topics = {}
     for topic in ai_generated_topics:
         if topic['id'] not in unique_topics:
             unique_topics[topic['id']] = topic
         else:
-            # You might want to merge information from duplicates here if needed
             print(f"Warning: Duplicate topic ID found: {topic['id']}. Skipping or merging.")
 
     cleaned_topics = list(unique_topics.values())
@@ -145,39 +139,34 @@ def ingest_roadmap_into_neo4j(learning_goal: str, user_id: str):
 
     with driver.session() as session:
         # First pass: Create all Topic nodes
-        # We create all nodes first to ensure prerequisites can reference them
         print("Creating topic nodes...")
         for topic_data in cleaned_topics:
-            session.execute_write(create_topic_node, topic_data) # Changed to execute_write
+            session.execute_write(create_topic_node, topic_data)
         print("Topic nodes created.")
 
         # Second pass: Create relationships and sources
-        print("Creating prerequisite relationships and sources...")
+        print("Creating prerequisite relationships and and sources...")
         for topic_data in cleaned_topics:
             # Create prerequisite relationships
             if topic_data.get('prerequisites'):
-                session.execute_write(create_prerequisite_relationships, topic_data['id'], topic_data['prerequisites']) # Changed to execute_write
+                session.execute_write(create_prerequisite_relationships, topic_data['id'], topic_data['prerequisites'])
 
-            # Create source nodes and relationships (if you have source data from AI or another process)
-            # For initial topic generation, the AI likely won't provide sources directly.
-            # This step would come after you implement your source generation/linking.
-            # For now, let's add a placeholder for sources.
-            # simulated_sources = [
-            #       {"url": f"https://example.com/source/{topic_data['id']}_1", "type": "Website", "relevance_score": 0.9, "summary": f"Summary for {topic_data['title']} source 1"},
-            #       {"url": f"https://youtube.com/video/{topic_data['id']}_2", "type": "Video", "relevance_score": 0.8, "summary": f"Summary for {topic_data['title']} source 2"},
-            # ]
-            # session.execute_write(create_source_nodes_and_relationships, topic_data['id'], simulated_sources) # Changed to execute_write
+            # NEW: Generate and ingest sources for each topic
+            sources_for_topic = generate_sources_for_topic(topic_data)
+            if sources_for_topic:
+                session.execute_write(create_source_nodes_and_relationships, topic_data['id'], sources_for_topic)
+                print(f"  Ingested {len(sources_for_topic)} source(s) for '{topic_data['title']}'.")
+            else:
+                print(f"  No sources generated for '{topic_data['title']}'.")
+            # END NEW
+
         print("Prerequisite relationships and sources (if applicable) created.")
-
-        # Optionally, create/merge the User node (e.g., for the current session user)
-        # You'd likely have user creation/auth elsewhere.
-        # session.execute_write(lambda tx: tx.run("MERGE (:User {id: $userId})", userId=user_id))
 
     print(f"Roadmap for '{learning_goal}' ingested into Neo4j.")
 
 if __name__ == "__main__":
 
-    learning_goal_input = input("What would you like to learn ")
+    learning_goal_input = input("What would you like to learn? ")
     current_user_id = "user123" # This would come from your user authentication system
 
     ingest_roadmap_into_neo4j(learning_goal_input, current_user_id) #ingesting the data into neo4j
@@ -187,18 +176,33 @@ if __name__ == "__main__":
     driver = get_neo4j_driver()
     if driver:
         with driver.session() as session:
-            result = session.run("MATCH (t:Topic) RETURN t.id, t.title ORDER BY t.id LIMIT 10")
             print("\nTopics in the database:")
+            result = session.run("MATCH (t:Topic) RETURN t.id, t.title ORDER BY t.id LIMIT 10")
             for record in result:
                 print(f"- {record['t.id']}: {record['t.title']}")
 
             # Find a topic and its direct prerequisites
-            print("\nPrerequisites for 'tailwind_layout':")
+            print("\nPrerequisites for 'tailwind_layout' (example):")
             result = session.run("""
                 MATCH (prereq:Topic)-[:PREREQUISITE_FOR]->(current:Topic {id: 'tailwind_layout'})
                 RETURN prereq.title
             """)
             for record in result:
                 print(f"- {record['prereq.title']}")
+
+            # NEW: Query to find topics and their linked sources (with titles)
+            print("\nTopics and their sources in the database (first 10):")
+            result = session.run("""
+                MATCH (t:Topic) OPTIONAL MATCH (t)-[:HAS_SOURCE]->(s:Source)
+                RETURN t.title, COLLECT({url:s.url, type:s.type, title:s.title}) AS sources
+                ORDER BY t.title LIMIT 10
+            """)
+            for record in result:
+                print(f"- {record['t.title']}")
+                for source in record['sources']:
+                    if source['url']: # Check if source is not null
+                        print(f"  Source: {source['url']} (Type: {source['type']}) - Title: {source['title']}")
+                print("-" * 20)
+            # END NEW
 
         close_neo4j_driver()
