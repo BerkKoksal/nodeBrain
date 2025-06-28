@@ -1,15 +1,22 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import TopInputBar from './components/TopInputBar';
+import NodeMap from './components/NodeMap';
+
+
 
 function App() {
-  const [count, setCount] = useState(0)
+
+  const handleSubmit = (topic) => {
+    console.log('User wants to learn about ', topic);
+  }
+
 
   return (
-    <div>
-
+    <div className="bg-black h-screen w-screen flex flex-col">
+      <TopInputBar onSubmit={handleSubmit}/>
+      <NodeMap />
+      
     </div>
+
   )
 }
 
