@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from services.neo4j_ingest import ingest_roadmap
+from services.neo4j_ingest import ingest_roadmap_into_neo4j
 
 router = APIRouter()
 
@@ -11,6 +11,6 @@ def generate_roadmap_endpoint(data: dict):
     if not learning_goal:
         raise HTTPException(status_code=400, detail="Missing learning goal.")
 
-    result = ingest_roadmap(learning_goal, user_id)
+    result = ingest_roadmap_into_neo4j(learning_goal, user_id)
 
     return result

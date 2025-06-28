@@ -1,8 +1,8 @@
 from neo4j import GraphDatabase
 import os
 import json
-from backend.services.topicCreate import generate_learning_roadmap # Import your AI function
-from Source_gen import generate_sources_for_topic # NEW: Import the source generator
+from services.topicCreate import generate_learning_roadmap
+from services.Source_gen import generate_sources_for_topic # NEW: Import the source generator
 
 # --- Neo4j Connection Details ---
 # Store these securely, e.g., in environment variables or a config file

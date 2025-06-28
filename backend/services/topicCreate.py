@@ -1,6 +1,6 @@
 import os
 import google.generativeai as genai
-import json 
+import json
 from dotenv import load_dotenv
 
 # Load API key from environment variable (recommended)
